@@ -1,9 +1,18 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import joblib
 import numpy as np
 from pydantic import BaseModel
 
-app = FastAPI(title="AgriSense Lite API")
+app = FastAPI(title="AgriSense API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all frontend requests
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Load models
 crop_model = joblib.load("Crop.pkl")
@@ -31,7 +40,7 @@ class SoilFeatures(BaseModel):
 @app.get("/")
 async def home():
     return {
-        "api_name": "AgriSense Lite API",
+        "api_name": "AgriSense API",
         "status": "active",
         "endpoints": {
             "/predict/soil": "POST - Predict soil health",
@@ -43,14 +52,12 @@ async def home():
 async def predict_soil(features: SoilFeatures):
     data = np.array([[getattr(features, field) for field in features.__annotations__]])
     soil_health_score = soil_health_model.predict(data)[0]
-    
     return {"Soil_Health_Score": soil_health_score}
 
 @app.post("/predict/crop")
 async def recommend_crop(features: SoilFeatures):
     data = np.array([[getattr(features, field) for field in features.__annotations__]])
     recommended_crop = crop_model.predict(data)[0]
-
     return {"Recommended_Crop": recommended_crop}
 
 if __name__ == "__main__":
