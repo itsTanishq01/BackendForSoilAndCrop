@@ -1,38 +1,32 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
+import joblib
 import numpy as np
-import pickle
-import uvicorn
-import os
+from pydantic import BaseModel
 
 app = FastAPI(title="AgriSense Lite API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Load models
+crop_model = joblib.load("Crop.pkl")
+soil_health_model = joblib.load("Soil.pkl")
 
-MODEL_PATHS = {
-    "soil": "Soil.pkl",
-    "crop": "Crop.pkl"
-}
-
-models = {}
-
-@app.on_event("startup")
-async def load_models():
-    global models
-    try:
-        with open(MODEL_PATHS["soil"], "rb") as f:
-            models["soil"] = pickle.load(f)
-        with open(MODEL_PATHS["crop"], "rb") as f:
-            models["crop"] = pickle.load(f)
-        print("✅ Models loaded successfully!")
-    except Exception as e:
-        print(f"❌ Error loading models: {e}")
+class SoilFeatures(BaseModel):
+    Soil_Moisture_: float
+    Bulk_Density_g_cm3: float
+    Porosity_: float
+    Water_Holding_Capacity_: float
+    pH_Level: float
+    Electrical_Conductivity_dS_m: float
+    Organic_Carbon_: float
+    Nitrogen_mg_kg: float
+    Phosphorus_mg_kg: float
+    Potassium_mg_kg: float
+    Sulfur_mg_kg: float
+    Calcium_mg_kg: float
+    Magnesium_mg_kg: float
+    Temperature_C: float
+    Rainfall_mm: float
+    Humidity_: float
+    Solar_Radiation_W_m2: float
 
 @app.get("/")
 async def home():
@@ -46,24 +40,19 @@ async def home():
     }
 
 @app.post("/predict/soil")
-async def predict_soil(data: dict):
-    if models["soil"] is None:
-        raise HTTPException(status_code=503, detail="Soil model is not available.")
-
-    input_features = np.array([data[key] for key in data.keys()]).reshape(1, -1)
-    prediction = models["soil"].predict(input_features)
-
-    return {"soil_health_score": float(prediction[0])}
+async def predict_soil(features: SoilFeatures):
+    data = np.array([[getattr(features, field) for field in features.__annotations__]])
+    soil_health_score = soil_health_model.predict(data)[0]
+    
+    return {"Soil_Health_Score": soil_health_score}
 
 @app.post("/predict/crop")
-async def recommend_crop(data: dict):
-    if models["crop"] is None:
-        raise HTTPException(status_code=503, detail="Crop model is not available.")
+async def recommend_crop(features: SoilFeatures):
+    data = np.array([[getattr(features, field) for field in features.__annotations__]])
+    recommended_crop = crop_model.predict(data)[0]
 
-    input_features = np.array([data[key] for key in data.keys()]).reshape(1, -1)
-    prediction = models["crop"].predict(input_features)
-
-    return {"recommended_crop": str(prediction[0])}
+    return {"Recommended_Crop": recommended_crop}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
